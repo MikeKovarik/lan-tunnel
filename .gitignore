@@ -58,5 +58,4 @@ typings/
 .next
 
 package-lock.json
-/dist
-/test/webpack/dist
+index.cjs

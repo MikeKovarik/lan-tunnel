@@ -1,6 +1,6 @@
 // Run this code on your server.
 import fs from 'fs'
-import {createProxyServer} from '../index.js' // 'lan-tunnel
+import {createProxyServer} from '../index.mjs' // 'lan-tunnel
 
 
 createProxyServer({

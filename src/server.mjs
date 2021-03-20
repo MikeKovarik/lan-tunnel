@@ -1,6 +1,6 @@
 import net from 'net'
 import tls from 'tls'
-import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.js'
+import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
 
 
 const defaultOptions = {

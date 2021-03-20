@@ -3,7 +3,10 @@
   "version": "1.0.1",
   "description": "🖇Library for exposing server from local network to the internet.",
   "author": "Mike Kovařík",
-  "main": "index.js",
+  "exports": {
+    "import": "./index.mjs",
+    "require": "./index.cjs"
+  },
   "type": "module",
   "keywords": [
     "http",
@@ -17,5 +20,11 @@
     "lan",
     "internet"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+	  "build": "rollup index.mjs --file index.cjs --format umd --name 'lan-tunnel'"
+  },
+  "devDependencies": {
+    "rollup": "^2.42.1"
+  }
 }

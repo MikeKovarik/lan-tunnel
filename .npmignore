@@ -1,5 +1,6 @@
 *
 .*
-!dist/**/*.*
 !src/**/*.*
+!index.mjs
+!index.cjs
 !index.js
