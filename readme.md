@@ -58,19 +58,19 @@ Proxy server running on the remote machine
 import {createProxyServer} from 'lan-tunnel'
 
 createProxyServer({
-	// Port where you can access the app from internet
-	proxyPort: 80,
-	// Internal port for communicating between the proxy and your local app
-	tunnelPort: 8010,
-	// OPTIONAL: Certificate to make the server HTTPS instead of simple HTTP.
-	key:  fs.readFileSync('../../ssl.key'),
-	cert: fs.readFileSync('../../ssl.cert'),
-	// OPTIONAL: Encryption of TCP tunnels
-	tunnelEncryption: {
-		key: 'abcdefghijklmnopqrstuvwxyzABCDEF',
-		iv: '1234567890123456',
-		cipher: 'aes-256-ctr',
-	},
+  // Port where you can access the app from internet
+  proxyPort: 80,
+  // Internal port for communicating between the proxy and your local app
+  tunnelPort: 8010,
+  // OPTIONAL: Certificate to make the server HTTPS instead of simple HTTP.
+  key:  fs.readFileSync('../../ssl.key'),
+  cert: fs.readFileSync('../../ssl.cert'),
+  // OPTIONAL: Encryption of TCP tunnels
+  tunnelEncryption: {
+    key: 'abcdefghijklmnopqrstuvwxyzABCDEF',
+    iv: '1234567890123456',
+    cipher: 'aes-256-ctr',
+  },
 })
 ```
 
@@ -81,13 +81,13 @@ import {connectToProxy} from 'lan-tunnel'
 
 // Include this in your app, or run separately
 connectToProxy({
-	// The internet proxy server at which the app will be exposed
-    tunnelHost: 'your-proxy-server.com',
-	tunnelPort: 8010,
-	// Your app
-	appPort: 8080
-	// OPTIONAL: Encryption of TCP tunnels
-	tunnelEncryption: {...}
+  // The internet proxy server at which the app will be exposed
+  tunnelHost: 'your-proxy-server.com',
+  tunnelPort: 8010,
+  // Your app
+  appPort: 8080
+  // OPTIONAL: Encryption of TCP tunnels
+  tunnelEncryption: {...}
 })
 
 // your typical web server listening on the appPort.

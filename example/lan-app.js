@@ -7,7 +7,7 @@ const appPort = 1609
 
 // Enable tunneling data from this app through the internet proxy server.
 connectToProxy({
-    tunnelHost: 'localhost',
+	tunnelHost: 'localhost',
 	tunnelPort: 8010,
 	// Port at which your HTTP server runs.
 	appPort,

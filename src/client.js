@@ -11,11 +11,11 @@ const defaultOptions = {
 	// Time between crashing/disconnecting and attempting to reconnect. In milliseconds.
 	reconnectTimeout: 15 * 1000,
 	// IP address of the proxy where the app will be exposed.
-    tunnelHost: undefined,
+	tunnelHost: undefined,
 	// Port at the proxy where the app will be exposed.
 	tunnelPort: undefined,
 	// IP address of the app. It's usually localhost, but this module can be run outside the app and bridge other IP too.
-    appHost: 'localhost',
+	appHost: 'localhost',
 	// Port at which the app runs. This port will be forwared to the proxy.
 	appPort: 80,
 	// Cipher used to encrypt tunnel connections (they're basic TCP sockets, but can be encrypted).
