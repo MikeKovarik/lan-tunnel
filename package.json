@@ -1,6 +1,6 @@
 {
   "name": "lan-tunnel",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "🖇Library for exposing server from local network to the internet.",
   "author": "Mike Kovařík",
   "exports": {
@@ -22,7 +22,7 @@
   ],
   "license": "MIT",
   "scripts": {
-	  "build": "rollup index.mjs --file index.cjs --format umd --name 'lan-tunnel'"
+    "build": "rollup index.mjs --file index.cjs --format umd --name 'lan-tunnel'"
   },
   "devDependencies": {
     "rollup": "^2.42.1"
