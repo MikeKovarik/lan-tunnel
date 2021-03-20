@@ -1,0 +1,21 @@
+{
+  "name": "lan-tunnel",
+  "version": "1.0.0",
+  "description": "🖇Library for exposing server from local network to the internet.",
+  "author": "Mike Kovařík",
+  "main": "index.js",
+  "type": "module",
+  "keywords": [
+    "http",
+    "https",
+    "tcp",
+    "ssl",
+    "tls",
+    "proxy",
+    "tunnel",
+    "server",
+    "lan",
+    "internet"
+  ],
+  "license": "MIT"
+}
