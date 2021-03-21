@@ -77,10 +77,10 @@ createProxyServer({
 Client side running in your local network
 
 ```js
-import {connectToProxy} from 'lan-tunnel'
+import {exposeThroughProxy} from 'lan-tunnel'
 
 // Include this in your app, or run separately
-connectToProxy({
+exposeThroughProxy({
   // The internet proxy server at which the app will be exposed
   tunnelHost: 'your-proxy-server.com',
   tunnelPort: 8010,

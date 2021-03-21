@@ -114,7 +114,7 @@ class Tunnel extends EventEmitter {
 
 }
 
-class ProxyServer {
+class ProxyClient {
 
 	openTunnels = []
 
@@ -177,6 +177,6 @@ class ProxyServer {
 
 }
 
-export function connectToProxy(options) {
-	new ProxyServer(options)
+export function exposeThroughProxy(options) {
+	new ProxyClient(options)
 }

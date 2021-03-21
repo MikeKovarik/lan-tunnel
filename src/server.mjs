@@ -109,6 +109,8 @@ class ProxyServer {
 	}
 
 	onTunnelOpened = tunnel => {
+		if (this.log && this.openTunnels.length === 0)
+			console.log(`App connected (first tunnel connected)`)
 		tunnel.setKeepAlive(true, 2000)
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
@@ -123,7 +125,7 @@ class ProxyServer {
 	onTunnelClosed(tunnel) {
 		removeFromArray(this.openTunnels, tunnel)
 		if (this.log && this.openTunnels.length === 0)
-			console.log(`All tunnels are closed but tunnel server remains listening. The tunelled app might've crashed.`)
+			console.log(`App diconnected (all tunnels are closed, tunnel server remains listening)`)
 	}
 
 	pipeSockets(request, tunnel) {

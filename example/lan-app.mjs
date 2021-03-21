@@ -1,12 +1,12 @@
 // This is the app (running on LAN) you want to expose to the internet.
 import express from 'express'
-import {connectToProxy} from '../index.mjs' // 'lan-tunnel
+import {exposeThroughProxy} from '../index.mjs' // 'lan-tunnel
 
 
 const appPort = 1609
 
 // Enable tunneling data from this app through the internet proxy server.
-connectToProxy({
+exposeThroughProxy({
 	tunnelHost: 'localhost',
 	tunnelPort: 8010,
 	// Port at which your HTTP server runs.
