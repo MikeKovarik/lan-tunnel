@@ -4,8 +4,6 @@ import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './s
 
 
 const defaultOptions = {
-	// debug logging info to console
-	log: false,
 	// Ammount of standby open tunnel connections 
 	maxTunnels: 20,
 	// Time between crashing/disconnecting and attempting to reconnect. In milliseconds.
@@ -25,6 +23,9 @@ const defaultOptions = {
 		iv: undefined,
 		cipher: 'aes-256-ctr',
 	},
+	// challenge
+	secret: undefined,
+	challengeTimeout: 4000,
 }
 
 class Tunnel extends EventEmitter {
@@ -33,19 +34,24 @@ class Tunnel extends EventEmitter {
 	localConnecting = true
 	remoteConnected = false
 	localConnected = false
+	verified = false
 
 	get connecting() {
 		return this.remoteConnecting && this.localConnecting
 	}
 
 	get connected() {
-		return this.remoteConnected && this.localConnected
+		return this.remoteConnected
+			&& this.localConnected
+			&& this.verified
 	}
 
 	constructor(options) {
 		super()
 		let {appHost, appPort, tunnelHost, tunnelPort} = options
 		this.tunnelEncryption = options.tunnelEncryption
+		this.secret = options.secret
+		this.challengeTimeout = options.challengeTimeout
 
 		const remote = this.remote = net.connect({
 			host: tunnelHost,
@@ -63,12 +69,19 @@ class Tunnel extends EventEmitter {
 		remote.once('connect', () => {
 			this.remoteConnecting = false
 			this.remoteConnected = true
-			if (this.connected) this.emit('connect')
+			if (this.secret) {
+				this.verifyTunnel()
+					.then(this.tryEmitConnect)
+					.catch(this.close)
+			} else {
+				this.verified = true
+				this.tryEmitConnect()
+			}
 		})
 		local.once('connect', () => {
 			this.localConnecting = false
 			this.localConnected = true
-			if (this.connected) this.emit('connect')
+			this.tryEmitConnect()
 		})
 
 		remote.on('error', this.close)
@@ -76,7 +89,36 @@ class Tunnel extends EventEmitter {
 		remote.on('end', this.close)
 		local.on('end', this.close)
 
-		this.pipeSockets()
+		// connect the two sockets once both are connected (and remote is verified with secret).
+		this.on('connect', this.pipeSockets)
+	}
+
+	tryEmitConnect = () => {
+		if (this.connected) this.emit('connect')
+	}
+
+	verifyTunnel() {
+		return new Promise((resolve, reject) => {
+			let timeout
+			let challenge = this.secret
+			this.remote.write(challenge)
+			const onReadable = () => {
+				clearTimeout(timeout)
+				let [accepted] = this.remote.read(1)
+				this.verified = accepted === 1
+				if (this.verified)
+					resolve()
+				else
+					reject()
+				this.remote.removeListener('readable', onReadable)
+			}
+			timeout = setTimeout(() => {
+				this.remote.removeListener('readable', onReadable)
+				if (this.log) console.log('challenge timed out, closing tunnel')
+				reject()
+			}, this.challengeTimeout)
+			this.remote.on('readable', onReadable)
+		})
 	}
 
 	getPromise() {
@@ -94,7 +136,7 @@ class Tunnel extends EventEmitter {
 		this.emit('end')
 	}
 
-	pipeSockets() {
+	pipeSockets = () => {
 		let {local, remote} = this
 		if (canEncryptTunnel(this.tunnelEncryption)) {
 			// Encrypted tunnel

@@ -1,6 +1,24 @@
 import crypto from 'crypto'
 
 
+export const NOTHING = 0
+export const INFO    = 1
+export const VERBOSE = 2
+
+export let logLevel = INFO
+
+export function setLogLevel(level) {
+	logLevel = level
+}
+
+export function log(level, ...args) {
+	if (level > logLevel) return
+	switch (level) {
+		case INFO:    return console.log(...args)
+		case VERBOSE: return console.log('\x1b[90m', ...args, '\x1b[0m')
+	}
+}
+
 export function removeFromArray(arr, item) {
 	const index = arr.indexOf(item)
 	if (index !== -1) {
