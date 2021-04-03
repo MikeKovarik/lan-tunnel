@@ -134,6 +134,10 @@ class ProxyClient {
 	tryOpenTunnels = async () => {
 		if (this.log) console.log('Trying to open tunnels')
 		let firstTunnel = this.createTunnel()
+		let localFailCb = () => console.error('Failed to connect tunnel to local (app)')
+		let remoteFailCb = () => console.error('Failed to connect tunnel to remote (proxy)')
+		firstTunnel.local.on('error', localFailCb)
+		firstTunnel.remote.on('error', remoteFailCb)
 		try {
 			await firstTunnel.getPromise()
 			if (this.log) console.log('First tunnel opened successfully')
@@ -144,6 +148,8 @@ class ProxyClient {
 			if (this.log) console.log('Unable to open tunnels')
 			// NOTE: scheduling retry is handled by 'end' handler.
 		}
+		firstTunnel.local.removeListener('error', localFailCb)
+		firstTunnel.remote.removeListener('error', remoteFailCb)
 	}
 
 	scheduleReconnect() {

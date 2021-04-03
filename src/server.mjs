@@ -23,6 +23,14 @@ const defaultOptions = {
 	},
 }
 
+function consoleGray(...args) {
+	console.log('\x1b[90m', ...args, '\x1b[0m')
+}
+
+const NOTHING = 0
+const ERRORS  = 1
+const INFO    = 2
+const VERBOSE = 3
 
 class ProxyServer {
 
@@ -42,6 +50,8 @@ class ProxyServer {
 		if (this.proxyPort === this.tunnelPort) throw new Error(`proxyPort cannot be the same as tunnelPort`)
 		if (typeof this.timeout !== 'number') this.timeout = 5000
 		this.encryptTunnel = canEncryptTunnel(this.tunnelEncryption)
+		// TODO
+		if (this.log) this.log = VERBOSE
 	}
 
 	startProxyServer = () => {
@@ -129,6 +139,16 @@ class ProxyServer {
 	}
 
 	pipeSockets(request, tunnel) {
+		if (this.log === VERBOSE) {
+			request.on('data', data => {
+				console.log('-'.repeat(100))
+				let str = data.toString()
+				let firstLine = str.slice(0, str.indexOf('\n'))
+				let httpIndex = firstLine.indexOf(' HTTP/')
+				if (httpIndex !== -1) consoleGray(firstLine.slice(0, httpIndex))
+				console.log('-'.repeat(100))
+			})
+		}
 		if (this.encryptTunnel) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)

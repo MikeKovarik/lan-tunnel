@@ -31,5 +31,5 @@ export function createCipher({cipher, key, iv}) {
 }
 
 export function canEncryptTunnel({cipher, key, iv}) {
-	return cipher && key && iv
+	return !!cipher && !!key && !!iv
 }
