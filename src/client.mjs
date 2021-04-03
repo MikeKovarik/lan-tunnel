@@ -1,6 +1,7 @@
 import net from 'net'
 import {EventEmitter} from 'events'
 import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
+import {log, logLevel, INFO, VERBOSE} from './shared.mjs'
 
 
 const defaultOptions = {
@@ -114,7 +115,7 @@ class Tunnel extends EventEmitter {
 			}
 			timeout = setTimeout(() => {
 				this.remote.removeListener('readable', onReadable)
-				if (this.log) console.log('challenge timed out, closing tunnel')
+				log(INFO, 'challenge timed out, closing tunnel')
 				reject()
 			}, this.challengeTimeout)
 			this.remote.on('readable', onReadable)
@@ -174,7 +175,7 @@ class ProxyClient {
 	}
 
 	tryOpenTunnels = async () => {
-		if (this.log) console.log('Trying to open tunnels')
+		log(INFO, 'Trying to open tunnels')
 		let firstTunnel = this.createTunnel()
 		let localFailCb = () => console.error('Failed to connect tunnel to local (app)')
 		let remoteFailCb = () => console.error('Failed to connect tunnel to remote (proxy)')
@@ -182,12 +183,12 @@ class ProxyClient {
 		firstTunnel.remote.on('error', remoteFailCb)
 		try {
 			await firstTunnel.getPromise()
-			if (this.log) console.log('First tunnel opened successfully')
+			log(INFO, 'First tunnel opened successfully')
 			// Sucessfully connected to both local and remote servers, go ahead creating all other tunnels.
 			this.fillTunnels()
 		} catch(err) {
 			// Failed to connect. Either remote or local is probably down. Retry later.
-			if (this.log) console.log('Unable to open tunnels')
+			log(INFO, 'Unable to open tunnels')
 			// NOTE: scheduling retry is handled by 'end' handler.
 		}
 		firstTunnel.local.removeListener('error', localFailCb)
@@ -213,7 +214,7 @@ class ProxyClient {
 			if (this.openTunnels.length === 0) {
 				// This was the last/only tunnel. We're likely in the boot phase where one failed
 				// tunnel means something is wrong and there's no reason to retry right away.
-				if (this.log) console.log('All tunnels are down')
+				log(INFO, 'All tunnels are down')
 				this.scheduleReconnect()
 			} else {
 				// This was not the only tunnel. Probably closed after fulfilling request.
