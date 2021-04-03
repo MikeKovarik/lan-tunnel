@@ -1,6 +1,6 @@
 {
   "name": "lan-tunnel",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "🖇Library for exposing server from local network to the internet.",
   "author": "Mike Kovařík",
   "exports": {
