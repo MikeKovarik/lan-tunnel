@@ -173,14 +173,8 @@ class ProxyServer {
 	}
 
 	pipeSockets(request, tunnel) {
-		if (this.log === VERBOSE) {
-			request.on('data', data => {
-				let str = data.toString()
-				let firstLine = str.slice(0, str.indexOf('\n'))
-				let httpIndex = firstLine.indexOf(' HTTP/')
-				if (httpIndex !== -1) log(VERBOSE, firstLine.slice(0, httpIndex))
-			})
-		}
+		if (logLevel === VERBOSE)
+			logIncomingSocket(request)
 		if (this.encryptTunnel) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
@@ -197,6 +191,18 @@ class ProxyServer {
 		}
 	}
 
+}
+
+const logIncomingSocket = socket => {
+	socket.once('data', buffer => {
+		let string = buffer.slice(0, 100).toString()
+		let firstLine = string.slice(0, string.indexOf('\n'))
+		let httpIndex = firstLine.indexOf(' HTTP/')
+		if (httpIndex !== -1)
+			log(VERBOSE, firstLine.slice(0, httpIndex))
+		else
+			log(VERBOSE, 'UNKNOWN REQUEST', string)
+	})
 }
 
 export function createProxyServer(options) {
