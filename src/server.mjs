@@ -37,6 +37,7 @@ class ProxyServer {
 	}
 
 	processOptions(options) {
+		setLogLevel(options.log)
 		applyOptions(this, defaultOptions, options)
 		if (typeof this.proxyPort !== 'number') throw new Error(`proxyPort not defined`)
 		if (typeof this.tunnelPort !== 'number') throw new Error(`tunnelPort not defined`)

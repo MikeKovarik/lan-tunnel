@@ -1,14 +1,14 @@
 import net from 'net'
 import {EventEmitter} from 'events'
 import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
-import {log, logLevel, INFO, VERBOSE} from './shared.mjs'
+import {log, setLogLevel, INFO, VERBOSE} from './shared.mjs'
 
 
 const defaultOptions = {
 	// Ammount of standby open tunnel connections 
 	maxTunnels: 20,
 	// Time between crashing/disconnecting and attempting to reconnect. In milliseconds.
-	reconnectTimeout: 15 * 1000,
+	reconnectTimeout: 5 * 1000,
 	// IP address of the proxy where the app will be exposed.
 	tunnelHost: undefined,
 	// Port at the proxy where the app will be exposed.
@@ -49,10 +49,12 @@ class Tunnel extends EventEmitter {
 
 	constructor(options) {
 		super()
-		let {appHost, appPort, tunnelHost, tunnelPort} = options
+
+		this.secret           = options.secret
 		this.tunnelEncryption = options.tunnelEncryption
-		this.secret = options.secret
 		this.challengeTimeout = options.challengeTimeout
+
+		let {appHost, appPort, tunnelHost, tunnelPort} = options
 
 		const remote = this.remote = net.connect({
 			host: tunnelHost,
@@ -79,6 +81,7 @@ class Tunnel extends EventEmitter {
 				this.tryEmitConnect()
 			}
 		})
+
 		local.once('connect', () => {
 			this.localConnecting = false
 			this.localConnected = true
@@ -101,8 +104,7 @@ class Tunnel extends EventEmitter {
 	verifyTunnel() {
 		return new Promise((resolve, reject) => {
 			let timeout
-			let challenge = this.secret
-			this.remote.write(challenge)
+			this.remote.write(this.secret)
 			const onReadable = () => {
 				clearTimeout(timeout)
 				let [accepted] = this.remote.read(1)
@@ -143,8 +145,8 @@ class Tunnel extends EventEmitter {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
 			remote
-				.pipe(decipher) // Decrypt request from tunnel
-				.pipe(local)    // Forward the request to be handle by the app
+				.pipe(decipher) // Decrypt remote request from tunnel
+				.pipe(local)    // Forward the request to be handled by the app
 				.pipe(cipher)   // Encrypt response from the app
 				.pipe(remote)   // Forward the encrypted response be served by the proxy
 		} else {
@@ -167,6 +169,7 @@ class ProxyClient {
 	}
 
 	processOptions(options) {
+		setLogLevel(options.log)
 		applyOptions(this, defaultOptions, options)
 		if (!this.appHost)    throw new Error(`appHost is undefined`)
 		if (!this.appPort)    throw new Error(`appPort is undefined`)
@@ -189,6 +192,7 @@ class ProxyClient {
 		} catch(err) {
 			// Failed to connect. Either remote or local is probably down. Retry later.
 			log(INFO, 'Unable to open tunnels')
+			log(VERBOSE, 'error', err)
 			// NOTE: scheduling retry is handled by 'end' handler.
 		}
 		firstTunnel.local.removeListener('error', localFailCb)
@@ -200,9 +204,31 @@ class ProxyClient {
 		this.timeout = setTimeout(this.tryOpenTunnels, this.reconnectTimeout)
 	}
 
+	fillTunnelsTimeout = undefined
+	onTunnelEnd() {
+		if (this.fillTunnelsTimeout === undefined)
+			this.fillTunnelsTimeout = setTimeout(this.onTunnelEndDebounced, 300)
+	}
+
+	onTunnelEndDebounced = () => {
+		this.fillTunnelsTimeout = undefined
+		if (this.openTunnels.length === 0) {
+			// This was the last/only tunnel. We're likely in the boot phase where one failed
+			// tunnel means something is wrong and there's no reason to retry right away.
+			log(INFO, 'All tunnels are down')
+			this.scheduleReconnect()
+		} else {
+			// This was not the only tunnel. Probably closed after fulfilling request.
+			this.fillTunnels()
+		}
+	}
+
 	fillTunnels = () => {
-		while (this.openTunnels.length < this.maxTunnels)
-			this.createTunnel()
+		if (this.openTunnels.length < this.maxTunnels) {
+			log(VERBOSE, `Filling empty spots after closing tunnels. ${this.openTunnels.length} / ${this.maxTunnels}`)
+			while (this.openTunnels.length < this.maxTunnels)
+				this.createTunnel()
+		}
 	}
 
 	createTunnel() {
@@ -211,15 +237,7 @@ class ProxyClient {
 		tunnel.once('end', () => {
 			// Cleanup once the tunnel closes
 			removeFromArray(this.openTunnels, tunnel)
-			if (this.openTunnels.length === 0) {
-				// This was the last/only tunnel. We're likely in the boot phase where one failed
-				// tunnel means something is wrong and there's no reason to retry right away.
-				log(INFO, 'All tunnels are down')
-				this.scheduleReconnect()
-			} else {
-				// This was not the only tunnel. Probably closed after fulfilling request.
-				this.fillTunnels()
-			}
+			this.onTunnelEnd()
 		})
 		return tunnel
 	}

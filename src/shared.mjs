@@ -7,16 +7,23 @@ export const VERBOSE = 2
 
 export let logLevel = INFO
 
-export function setLogLevel(level) {
-	logLevel = level
+export const setLogLevel = arg => {
+	if (arg === true)
+		logLevel = VERBOSE
+	else if (arg === false)
+		logLevel = NOTHING
+	else if (typeof arg === 'number')
+		logLevel = arg
+	else
+		logLevel = INFO
 }
 
 export function log(level, ...args) {
 	if (level > logLevel) return
-	switch (level) {
-		case INFO:    return console.log(...args)
-		case VERBOSE: return console.log('\x1b[90m', ...args, '\x1b[0m')
-	}
+	if (level >= VERBOSE)
+		console.log('\x1b[90m', ...args, '\x1b[0m')
+	else
+		console.log(...args)
 }
 
 export function removeFromArray(arr, item) {
