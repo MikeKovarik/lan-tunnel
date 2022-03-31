@@ -1,7 +1,7 @@
 import net from 'net'
 import tls from 'tls'
 import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
-import {log, logLevel, INFO, VERBOSE} from './shared.mjs'
+import {log, logLevel, INFO, VERBOSE, setLogLevel} from './shared.mjs'
 
 
 const defaultOptions = {
