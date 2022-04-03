@@ -1,33 +1,9 @@
 import net from 'net'
 import {EventEmitter} from 'events'
-import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
-import {log, logLevel, setLogLevel, INFO, VERBOSE} from './shared.mjs'
+import {log, logLevel, setLogLevel, INFO, VERBOSE, removeFromArray, applyOptions, setupLongLivedSocket} from './shared.mjs'
+import {verifySenderTunnel, createCipher, canEncryptTunnel} from './encryption.mjs'
+import defaultOptions from './options.mjs'
 
-
-const defaultOptions = {
-	// Ammount of standby open tunnel connections 
-	maxTunnels: 20,
-	// Time between crashing/disconnecting and attempting to reconnect. In milliseconds.
-	reconnectTimeout: 5 * 1000,
-	// IP address of the proxy where the app will be exposed.
-	tunnelHost: undefined,
-	// Port at the proxy where the app will be exposed.
-	tunnelPort: undefined,
-	// IP address of the app. It's usually localhost, but this module can be run outside the app and bridge other IP too.
-	appHost: 'localhost',
-	// Port at which the app runs. This port will be forwared to the proxy.
-	appPort: 80,
-	// Cipher used to encrypt tunnel connections (they're basic TCP sockets, but can be encrypted).
-	// key and iv are required to turn on encryption. More info: https://nodejs.org/api/crypto.html#crypto_crypto_createcipheriv_algorithm_key_iv_options.
-	tunnelEncryption: {
-		key: undefined,
-		iv: undefined,
-		cipher: 'aes-256-ctr',
-	},
-	// challenge
-	secret: undefined,
-	challengeTimeout: 4000,
-}
 
 class Tunnel extends EventEmitter {
 
@@ -66,19 +42,15 @@ class Tunnel extends EventEmitter {
 			port: appPort
 		})
 
-		setupRequestSocket(remote)
-		setupRequestSocket(local)
-
 		remote.once('connect', () => {
 			this.remoteConnecting = false
 			this.remoteConnected = true
 			if (this.secret) {
-				this.verifyTunnel()
-					.then(this.tryEmitConnect)
+				this.verifySenderTunnel(this.remote, this)
+					.then(this.acceptTunnel)
 					.catch(this.close)
 			} else {
-				this.verified = true
-				this.tryEmitConnect()
+				this.acceptTunnel()
 			}
 		})
 
@@ -88,10 +60,10 @@ class Tunnel extends EventEmitter {
 			this.tryEmitConnect()
 		})
 
-		remote.on('error', this.close)
-		local.on('error', this.close)
-		remote.on('end', this.close)
-		local.on('end', this.close)
+		remote.once('error', this.close)
+		remote.once('end',   this.close)
+		local.once('error',  this.close)
+		local.once('end',    this.close)
 
 		// connect the two sockets once both are connected (and remote is verified with secret).
 		this.on('connect', this.pipeSockets)
@@ -101,27 +73,11 @@ class Tunnel extends EventEmitter {
 		if (this.connected) this.emit('connect')
 	}
 
-	verifyTunnel() {
-		return new Promise((resolve, reject) => {
-			let timeout
-			this.remote.write(this.secret)
-			const onReadable = () => {
-				clearTimeout(timeout)
-				let [accepted] = this.remote.read(1)
-				this.verified = accepted === 1
-				if (this.verified)
-					resolve()
-				else
-					reject()
-				this.remote.removeListener('readable', onReadable)
-			}
-			timeout = setTimeout(() => {
-				this.remote.removeListener('readable', onReadable)
-				log(INFO, 'challenge timed out, closing tunnel')
-				reject()
-			}, this.challengeTimeout)
-			this.remote.on('readable', onReadable)
-		})
+	acceptTunnel = () => {
+		this.verified = true
+		setupLongLivedSocket(this.remote)
+		setupLongLivedSocket(this.local)
+		this.tryEmitConnect()
 	}
 
 	getPromise() {
@@ -165,23 +121,18 @@ class Tunnel extends EventEmitter {
 
 }
 
-const SOCKID = Symbol()
-
-const getId = socket => socket[SOCKID] = socket[SOCKID] ?? Math.round(Math.random() * 100)
-
 const logIncomingSocket = socket => {
-	const id = getId(socket)
 	socket.once('data', buffer => {
 		let string = buffer.slice(0, 100).toString()
 		let firstLine = string.slice(0, string.indexOf('\n'))
 		let httpIndex = firstLine.indexOf(' HTTP/')
 		if (httpIndex !== -1)
-			log(VERBOSE, 'CLIENT:', id.toString(), firstLine.slice(0, httpIndex))
+			log(VERBOSE, 'CLIENT:', firstLine.slice(0, httpIndex))
 		else
-			log(VERBOSE, 'CLIENT:', id.toString(), 'UNKNOWN REQUEST', string)
+			log(VERBOSE, 'CLIENT:', 'UNKNOWN REQUEST', string)
 	})
 	socket.once('end', () => {
-		log(VERBOSE, 'CLIENT:', id.toString(), 'end')
+		log(VERBOSE, 'CLIENT:', 'end')
 	})
 }
 
@@ -252,9 +203,9 @@ class ProxyClient {
 	}
 
 	fillTunnels = () => {
-		if (this.openTunnels.length < this.maxTunnels) {
-			log(VERBOSE, `Filling empty spots after closing tunnels. ${this.openTunnels.length} / ${this.maxTunnels}`)
-			while (this.openTunnels.length < this.maxTunnels)
+		if (this.openTunnels.length < this.tunnelSocketsPoolSize) {
+			log(VERBOSE, `Filling empty spots after closing tunnels. ${this.openTunnels.length} / ${this.tunnelSocketsPoolSize}`)
+			while (this.openTunnels.length < this.tunnelSocketsPoolSize)
 				this.createTunnel()
 		}
 	}
@@ -274,10 +225,4 @@ class ProxyClient {
 
 export function exposeThroughProxy(options) {
 	new ProxyClient(options)
-}
-
-function setupRequestSocket(socket) {
-	socket.setTimeout(0)
-	socket.setNoDelay(true)
-	socket.setKeepAlive(true, 0)
 }

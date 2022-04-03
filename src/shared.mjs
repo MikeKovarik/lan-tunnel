@@ -1,6 +1,3 @@
-import crypto from 'crypto'
-
-
 export const NOTHING = 0
 export const INFO    = 1
 export const VERBOSE = 2
@@ -48,13 +45,8 @@ export function applyOptions(target, defaultOpts, userOpts) {
 	return target
 }
 
-export function createCipher({cipher, key, iv}) {
-	return {
-		cipher: crypto.createCipheriv(cipher, key, iv),
-		decipher: crypto.createDecipheriv(cipher, key, iv),
-	}
-}
-
-export function canEncryptTunnel({cipher, key, iv}) {
-	return !!cipher && !!key && !!iv
+export function setupLongLivedSocket(socket) {
+	socket.setTimeout(0)
+	socket.setNoDelay(true)
+	socket.setKeepAlive(true, 0)
 }
