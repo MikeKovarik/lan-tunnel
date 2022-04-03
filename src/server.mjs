@@ -173,7 +173,8 @@ class ProxyServer {
 
 const logIncomingSocket = (socket, firstChunk) => {
 	socket.once('data', buffer => {
-		let string = Buffer.concat([firstChunk, buffer]).slice(0, 100).toString()
+		if (firstChunk) buffer = Buffer.concat([firstChunk, buffer])
+		let string = buffer.slice(0, 100).toString()
 		let firstLine = string.slice(0, string.indexOf('\n'))
 		let httpIndex = firstLine.indexOf(' HTTP/')
 		if (httpIndex !== -1)
