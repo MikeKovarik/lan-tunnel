@@ -31,14 +31,13 @@ class ProxyServer {
 		let {proxyPort, cert, key} = this
 		let serverType
 		if (cert && key) {
-			this.proxy = tls.createServer({cert, key})
+			this.proxy = tls.createServer({cert, key}, this.onProxyRequest)
 			serverType = 'HTTPS/SSL'
 		} else {
-			this.proxy = net.createServer()
+			this.proxy = net.createServer(this.onProxyRequest)
 			serverType = 'HTTP/TCP'
 		}
 		if (logLevel >= INFO) this.proxy.on('listening', () => console.log(`${serverType} Proxy server is listening on port ${proxyPort}`))
-		this.proxy.on('connection', this.onProxyRequest)
 		this.proxy.on('error', this.restartProxyServer)
 		this.proxy.on('close', this.restartProxyServer)
 		this.proxy.listen(proxyPort)
