@@ -103,7 +103,7 @@ class ProxyServer {
 		tunnel.once('close', close)
 
 		if (this.secret) {
-			this.verifyReceiverTunnel(tunnel, this)
+			verifyReceiverTunnel(tunnel, this)
 				.then(() => this.acceptTunnel(tunnel))
 				.catch(() => tunnel.end())
 		} else {

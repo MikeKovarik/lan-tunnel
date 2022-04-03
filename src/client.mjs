@@ -46,7 +46,7 @@ class Tunnel extends EventEmitter {
 			this.remoteConnecting = false
 			this.remoteConnected = true
 			if (this.secret) {
-				this.verifySenderTunnel(this.remote, this)
+				verifySenderTunnel(this.remote, this)
 					.then(this.acceptTunnel)
 					.catch(this.close)
 			} else {
