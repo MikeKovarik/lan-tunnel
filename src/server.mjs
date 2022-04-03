@@ -100,13 +100,15 @@ class ProxyServer {
 		const close = () => this.onRequestClosed(request)
 		request.once('error', close)
 		request.once('end', close)
+		request.once('timeout', close)
 
 		if (this.tunnelPool.length)
 			this.pipeSockets(request, this.tunnelPool.shift())
 		else
 			this.requestQueue.push(request)
 
-		request.setTimeout(this.requestTimeout)
+		if (request.timeout === undefined)
+			request.setTimeout(this.requestTimeout)
 	}
 
 	onRequestClosed(request) {
@@ -120,6 +122,7 @@ class ProxyServer {
 		const close = () => this.onTunnelClosed(tunnel)
 		tunnel.once('error', close)
 		tunnel.once('end', close)
+		tunnel.once('timeout', close)
 
 		if (this.secret) {
 			this.verifyReceiverTunnel(tunnel, this)
