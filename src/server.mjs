@@ -5,8 +5,6 @@ import {verifyReceiverTunnel, createCipher, canEncryptTunnel} from './encryption
 import defaultOptions from './options.mjs'
 
 
-const FIRST_CHUNK = Symbol('firstChunk')
-
 class ProxyServer {
 
 	tunnelPool = []
@@ -129,13 +127,11 @@ class ProxyServer {
 	}
 
 	pipeSockets(request, tunnel) {
-		const firstChunk = request[FIRST_CHUNK]
 		if (logLevel === VERBOSE)
-			logIncomingSocket(request, firstChunk)
+			logIncomingSocket(request)
 		if (this.encryptTunnel) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
-			if (firstChunk) cipher.write(firstChunk)
 			request
 				.pipe(cipher)   // Encrypt the request
 				.pipe(tunnel)   // Forward encrypted request through tunnel to client
@@ -143,7 +139,6 @@ class ProxyServer {
 				.pipe(request)  // Forward the response back to requester
 		} else {
 			// Raw tunnel
-			if (firstChunk) tunnel.write(firstChunk)
 			request
 				.pipe(tunnel)  // Forward the request through tunnel to client
 				.pipe(request) // Forward response from client through tunnel back to requester
@@ -152,9 +147,8 @@ class ProxyServer {
 
 }
 
-const logIncomingSocket = (socket, firstChunk) => {
+const logIncomingSocket = socket => {
 	socket.once('data', buffer => {
-		if (firstChunk) buffer = Buffer.concat([firstChunk, buffer])
 		let string = buffer.slice(0, 100).toString()
 		let firstLine = string.slice(0, string.indexOf('\n'))
 		let httpIndex = firstLine.indexOf(' HTTP/')
