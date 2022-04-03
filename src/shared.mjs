@@ -31,7 +31,7 @@ export function removeFromArray(arr, item) {
 	}
 }
 
-export function applyOptions(target, defaultOpts, userOpts) {
+export function applyOptions(target, defaultOpts = {}, userOpts = {}) {
 	for (let key in defaultOpts) {
 		let userVal = userOpts[key]
 		let defaultVal = defaultOpts[key]
