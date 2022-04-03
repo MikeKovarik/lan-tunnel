@@ -1,5 +1,7 @@
 import net from 'net'
 import tls from 'tls'
+import http from 'http'
+import https from 'https'
 import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
 import {log, logLevel, INFO, VERBOSE, setLogLevel} from './shared.mjs'
 
@@ -25,9 +27,11 @@ const defaultOptions = {
 	challengeTimeout: 4000,
 }
 
+const FIRST_CHUNK = Symbol()
+
 class ProxyServer {
 
-	openTunnels = []
+	tunnelPool = []
 	requestQueue = []
 
 	constructor(options) {
@@ -49,14 +53,24 @@ class ProxyServer {
 	startProxyServer = () => {
 		let {proxyPort, cert, key} = this
 		let serverType
+		let useHttp = true
 		if (cert && key) {
-			this.proxy = tls.createServer({cert, key}, this.onProxyRequest)
+			this.proxy = useHttp
+				? https.createServer({cert, key})
+				: tls.createServer({cert, key})
 			serverType = 'HTTPS/SSL'
 		} else {
-			this.proxy = net.createServer(this.onProxyRequest)
+			this.proxy = useHttp
+				? http.createServer()
+				: net.createServer()
 			serverType = 'HTTP/TCP'
 		}
+		// HTTP/WEBSOCKET related: It's important to to let Nodejs do some internal steps after 'connection' event
+		// rather than listening to 'requst' event directly.
+		// This doesn't apply to basic TCP connection where there's only 'connection'.
 		if (logLevel >= INFO) this.proxy.on('listening', () => console.log(`${serverType} Proxy server is listening on port ${proxyPort}`))
+		this.proxy.on('connection', useHttp ? this.onHttpServerConnection : this.onProxyRequest)
+		this.proxy.on('upgrade', (req, socket) => console.log('upgrade', getId(socket)))
 		this.proxy.on('error', this.restartProxyServer)
 		this.proxy.on('close', this.restartProxyServer)
 		this.proxy.listen(proxyPort)
@@ -78,24 +92,36 @@ class ProxyServer {
 		tunnel.listen(tunnelPort)
 	}
 
-	restartProxyServer() {
+	restartProxyServer = () => {
 		log(INFO, `Restarting proxy server`)
 		this.proxy.close(this.startProxyServer)
 	}
 
-	restartTunnelServer() {
+	restartTunnelServer = () => {
 		log(INFO, `Restarting tunnel server`)
 		this.tunnel.close(this.startTunnelServer)
 	}
 
+	onHttpServerConnection = socket => {
+		// IMPORTANT: it's important to wait for the first data event.
+		// CONNECTION CANNOT BE ESTABLISHED IMMEDIATELY!
+		// Nodejs first does some internal header parsing and then determines wheter
+		// to fire 'request' or 'upgrade' event. Upgrade is needed for websockets!
+		// It only works this way!
+		socket.once('data', firstChunk => {
+			socket[FIRST_CHUNK] = firstChunk
+			this.onProxyRequest(socket)
+		})
+	}
+
 	onProxyRequest = request => {
-		request.setKeepAlive(true)
+		setupRequestSocket(request)
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
 		request.on('error', () => {})
 		request.on('close', () => this.destroyRequest(request))
-		if (this.openTunnels.length)
-			this.pipeSockets(request, this.openTunnels.shift())
+		if (this.tunnelPool.length)
+			this.pipeSockets(request, this.tunnelPool.shift())
 		else
 			this.requestQueue.push(request)
 		this.timeoutRequest(request)
@@ -111,7 +137,8 @@ class ProxyServer {
 	}
 
 	onTunnelOpened = tunnel => {
-		tunnel.setKeepAlive(true, 2000)
+		setupRequestSocket(tunnel)
+		//tunnel.setKeepAlive(true, 2000)
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
 		tunnel.on('error', () => {})
@@ -153,31 +180,29 @@ class ProxyServer {
 	}
 
 	acceptTunnel(tunnel) {
-		if (this.openTunnels.length === 0)
+		if (this.tunnelPool.length === 0)
 			log(INFO, `App connected (first tunnel connected)`)
 		if (this.requestQueue.length)
 			this.pipeSockets(this.requestQueue.shift(), tunnel)
 		else
-			this.openTunnels.push(tunnel)
-	}
-
-	rejectTunnel(tunnel) {
-		log(INFO, `Tunnel rejected: incorrect secret`)
-		tunnel.end()
+			this.tunnelPool.push(tunnel)
 	}
 
 	onTunnelClosed(tunnel) {
-		removeFromArray(this.openTunnels, tunnel)
-		if (this.openTunnels.length === 0)
+		removeFromArray(this.tunnelPool, tunnel)
+		if (this.tunnelPool.length === 0)
 			log(INFO, `App diconnected (all tunnels are closed, tunnel server remains listening)`)
 	}
 
 	pipeSockets(request, tunnel) {
+		const id = getId(request)
+		const firstChunk = request[FIRST_CHUNK]
 		if (logLevel === VERBOSE)
-			logIncomingSocket(request)
+			logIncomingSocket(request, firstChunk)
 		if (this.encryptTunnel) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
+			if (firstChunk) cipher.write(firstChunk)
 			request
 				.pipe(cipher)   // Encrypt the request
 				.pipe(tunnel)   // Forward encrypted request through tunnel to client
@@ -185,6 +210,7 @@ class ProxyServer {
 				.pipe(request)  // Forward the response back to requester
 		} else {
 			// Raw tunnel
+			if (firstChunk) tunnel.write(firstChunk)
 			request
 				.pipe(tunnel)  // Forward the request through tunnel to client
 				.pipe(request) // Forward response from client through tunnel back to requester
@@ -193,15 +219,26 @@ class ProxyServer {
 
 }
 
-const logIncomingSocket = socket => {
+function setupRequestSocket(socket) {
+	socket.setTimeout(0)
+	socket.setNoDelay(true)
+	socket.setKeepAlive(true, 0)
+}
+
+const SOCKID = Symbol()
+
+const getId = socket => socket[SOCKID] = socket[SOCKID] ?? Math.round(Math.random() * 100)
+
+const logIncomingSocket = (socket, firstChunk) => {
+	const id = getId(socket)
 	socket.once('data', buffer => {
-		let string = buffer.slice(0, 100).toString()
+		let string = Buffer.concat([firstChunk, buffer]).slice(0, 100).toString()
 		let firstLine = string.slice(0, string.indexOf('\n'))
 		let httpIndex = firstLine.indexOf(' HTTP/')
 		if (httpIndex !== -1)
-			log(VERBOSE, firstLine.slice(0, httpIndex))
+			log(VERBOSE, 'SERVER:', id.toString(), firstLine.slice(0, httpIndex))
 		else
-			log(VERBOSE, 'UNKNOWN REQUEST', string)
+			log(VERBOSE, 'SERVER:', id.toString(), 'UNKNOWN REQUEST', string)
 	})
 }
 

@@ -1,7 +1,7 @@
 import net from 'net'
 import {EventEmitter} from 'events'
 import {removeFromArray, applyOptions, createCipher, canEncryptTunnel} from './shared.mjs'
-import {log, setLogLevel, INFO, VERBOSE} from './shared.mjs'
+import {log, logLevel, setLogLevel, INFO, VERBOSE} from './shared.mjs'
 
 
 const defaultOptions = {
@@ -66,8 +66,8 @@ class Tunnel extends EventEmitter {
 			port: appPort
 		})
 
-		remote.setKeepAlive(true)
-		local.setKeepAlive(true)
+		setupRequestSocket(remote)
+		setupRequestSocket(local)
 
 		remote.once('connect', () => {
 			this.remoteConnecting = false
@@ -141,9 +141,13 @@ class Tunnel extends EventEmitter {
 
 	pipeSockets = () => {
 		let {local, remote} = this
+		if (logLevel === VERBOSE)
+			logIncomingSocket(remote)
 		if (canEncryptTunnel(this.tunnelEncryption)) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
+			//if (logLevel === VERBOSE)
+			//	logIncomingSocket(decipher)
 			remote
 				.pipe(decipher) // Decrypt remote request from tunnel
 				.pipe(local)    // Forward the request to be handled by the app
@@ -151,6 +155,8 @@ class Tunnel extends EventEmitter {
 				.pipe(remote)   // Forward the encrypted response be served by the proxy
 		} else {
 			// Raw tunnel
+			//if (logLevel === VERBOSE)
+			//	logIncomingSocket(remote)
 			remote
 				.pipe(local)  // Forward the request to the app
 				.pipe(remote) // Forward response from the app through tunnel back to requester
@@ -158,6 +164,28 @@ class Tunnel extends EventEmitter {
 	}
 
 }
+
+const SOCKID = Symbol()
+
+const getId = socket => socket[SOCKID] = socket[SOCKID] ?? Math.round(Math.random() * 100)
+
+const logIncomingSocket = socket => {
+	const id = getId(socket)
+	socket.once('data', buffer => {
+		let string = buffer.slice(0, 100).toString()
+		let firstLine = string.slice(0, string.indexOf('\n'))
+		let httpIndex = firstLine.indexOf(' HTTP/')
+		if (httpIndex !== -1)
+			log(VERBOSE, 'CLIENT:', id.toString(), firstLine.slice(0, httpIndex))
+		else
+			log(VERBOSE, 'CLIENT:', id.toString(), 'UNKNOWN REQUEST', string)
+	})
+	socket.once('end', () => {
+		log(VERBOSE, 'CLIENT:', id.toString(), 'end')
+	})
+}
+
+
 
 class ProxyClient {
 
@@ -246,4 +274,10 @@ class ProxyClient {
 
 export function exposeThroughProxy(options) {
 	new ProxyClient(options)
+}
+
+function setupRequestSocket(socket) {
+	socket.setTimeout(0)
+	socket.setNoDelay(true)
+	socket.setKeepAlive(true, 0)
 }
