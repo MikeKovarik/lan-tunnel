@@ -6,8 +6,7 @@ export default {
 
 	// CLIENT ONLY
 	// IP/hostname of the proxy where the app will be exposed.
-	tunnelHost: undefined,
-	// rename to proxyHost ??
+	proxyHost: undefined,
 
 	// CLIENT & SERVER
 	// Internal port, opened on the proxy server, used to receive connections from the app within hidden network.
@@ -50,7 +49,8 @@ export default {
 	// SERVER ONLY
 	// Sets the socket to timeout after timeout milliseconds of inactivity on the socket. By default net.Socket do not have a timeout.
 	// calls socket.setTimeout() https://nodejs.org/api/net.html#socketsettimeouttimeout-callback
-	requestTimeout: 5000,
+	// Setting this value breaks websockets.
+	requestTimeout: undefined,
 
 	// CLIENT ONLY
 	// Ammount of standby open tunnel connections 

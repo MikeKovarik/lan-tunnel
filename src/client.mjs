@@ -30,10 +30,10 @@ class Tunnel extends EventEmitter {
 		this.tunnelEncryption = options.tunnelEncryption
 		this.challengeTimeout = options.challengeTimeout
 
-		let {appHost, appPort, tunnelHost, tunnelPort} = options
+		let {appHost, appPort, proxyHost, tunnelPort} = options
 
 		const remote = this.remote = net.connect({
-			host: tunnelHost,
+			host: proxyHost,
 			port: tunnelPort
 		})
 
@@ -97,8 +97,6 @@ class Tunnel extends EventEmitter {
 
 	pipeSockets = () => {
 		let {local, remote} = this
-		if (logLevel === VERBOSE)
-			logIncomingSocket(remote)
 		if (canEncryptTunnel(this.tunnelEncryption)) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
@@ -111,8 +109,8 @@ class Tunnel extends EventEmitter {
 				.pipe(remote)   // Forward the encrypted response be served by the proxy
 		} else {
 			// Raw tunnel
-			//if (logLevel === VERBOSE)
-			//	logIncomingSocket(remote)
+			if (logLevel === VERBOSE)
+				logIncomingSocket(remote)
 			remote
 				.pipe(local)  // Forward the request to the app
 				.pipe(remote) // Forward response from the app through tunnel back to requester
@@ -127,13 +125,11 @@ const logIncomingSocket = socket => {
 		let firstLine = string.slice(0, string.indexOf('\n'))
 		let httpIndex = firstLine.indexOf(' HTTP/')
 		if (httpIndex !== -1)
-			log(VERBOSE, 'CLIENT:', firstLine.slice(0, httpIndex))
+			log(VERBOSE, firstLine.slice(0, httpIndex))
 		else
-			log(VERBOSE, 'CLIENT:', 'UNKNOWN REQUEST', string)
+			log(VERBOSE, 'UNKNOWN REQUEST', string)
 	})
-	socket.once('end', () => {
-		log(VERBOSE, 'CLIENT:', 'end')
-	})
+	//socket.once('end', () => log(VERBOSE, 'end'))
 }
 
 
@@ -152,7 +148,7 @@ class ProxyClient {
 		applyOptions(this, defaultOptions, options)
 		if (!this.appHost)    throw new Error(`appHost is undefined`)
 		if (!this.appPort)    throw new Error(`appPort is undefined`)
-		if (!this.tunnelHost) throw new Error(`tunnelHost is undefined`)
+		if (!this.proxyHost) throw new Error(`proxyHost is undefined`)
 		if (!this.tunnelPort) throw new Error(`tunnelPort is undefined`)
 	}
 

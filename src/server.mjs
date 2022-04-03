@@ -1,7 +1,5 @@
 import net from 'net'
 import tls from 'tls'
-import http from 'http'
-import https from 'https'
 import {log, logLevel, INFO, VERBOSE, setLogLevel, removeFromArray, applyOptions, setupLongLivedSocket} from './shared.mjs'
 import {verifyReceiverTunnel, createCipher, canEncryptTunnel} from './encryption.mjs'
 import defaultOptions from './options.mjs'
@@ -32,25 +30,15 @@ class ProxyServer {
 	startProxyServer = () => {
 		let {proxyPort, cert, key} = this
 		let serverType
-		let useHttp = true
 		if (cert && key) {
-			this.proxy = useHttp
-				? https.createServer({cert, key})
-				: tls.createServer({cert, key})
+			this.proxy = tls.createServer({cert, key})
 			serverType = 'HTTPS/SSL'
 		} else {
-			this.proxy = useHttp
-				? http.createServer()
-				: net.createServer()
+			this.proxy = net.createServer()
 			serverType = 'HTTP/TCP'
 		}
-		// HTTP/WEBSOCKET related: It's important to to let Nodejs do some internal steps after 'connection' event
-		// rather than listening to 'requst' event directly.
-		// This doesn't apply to basic TCP connection where there's only 'connection'.
 		if (logLevel >= INFO) this.proxy.on('listening', () => console.log(`${serverType} Proxy server is listening on port ${proxyPort}`))
-		this.proxy.on('connection', useHttp ? this.onHttpServerConnection : this.onProxyRequest)
-		// http 'upgrade' is called on websockets. Ensure it's long-lived despite user's timeout setting.
-		this.proxy.on('upgrade', (req, socket) => setupLongLivedSocket(socket))
+		this.proxy.on('connection', this.onProxyRequest)
 		this.proxy.on('error', this.restartProxyServer)
 		this.proxy.on('close', this.restartProxyServer)
 		this.proxy.listen(proxyPort)
@@ -82,18 +70,6 @@ class ProxyServer {
 		this.tunnel.close(this.startTunnelServer)
 	}
 
-	onHttpServerConnection = socket => {
-		// IMPORTANT: it's important to wait for the first data event.
-		// CONNECTION CANNOT BE ESTABLISHED IMMEDIATELY!
-		// Nodejs first does some internal header parsing and then determines wheter
-		// to fire 'request' or 'upgrade' event. Upgrade is needed for websockets!
-		// It only works this way!
-		socket.once('data', firstChunk => {
-			socket[FIRST_CHUNK] = firstChunk
-			this.onProxyRequest(socket)
-		})
-	}
-
 	onProxyRequest = request => {
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
@@ -101,13 +77,14 @@ class ProxyServer {
 		request.once('error', close)
 		request.once('end', close)
 		request.once('timeout', close)
+		request.once('close', close)
 
 		if (this.tunnelPool.length)
 			this.pipeSockets(request, this.tunnelPool.shift())
 		else
 			this.requestQueue.push(request)
 
-		if (request.timeout === undefined)
+		if (this.requestTimeout !== undefined && request.timeout === undefined)
 			request.setTimeout(this.requestTimeout)
 	}
 
@@ -123,6 +100,7 @@ class ProxyServer {
 		tunnel.once('error', close)
 		tunnel.once('end', close)
 		tunnel.once('timeout', close)
+		tunnel.once('close', close)
 
 		if (this.secret) {
 			this.verifyReceiverTunnel(tunnel, this)
@@ -144,9 +122,10 @@ class ProxyServer {
 	}
 
 	onTunnelClosed(tunnel) {
+		const prevLength = this.tunnelPool.length // prevents spamming the "all tunnels ..." message
 		removeFromArray(this.tunnelPool, tunnel)
 		tunnel.end()
-		if (this.tunnelPool.length === 0)
+		if (this.tunnelPool.length === 0 && prevLength > 0)
 			log(INFO, `App diconnected (all tunnels are closed, tunnel server remains listening)`)
 	}
 
@@ -181,9 +160,9 @@ const logIncomingSocket = (socket, firstChunk) => {
 		let firstLine = string.slice(0, string.indexOf('\n'))
 		let httpIndex = firstLine.indexOf(' HTTP/')
 		if (httpIndex !== -1)
-			log(VERBOSE, 'SERVER:', firstLine.slice(0, httpIndex))
+			log(VERBOSE, firstLine.slice(0, httpIndex))
 		else
-			log(VERBOSE, 'SERVER:', 'UNKNOWN REQUEST', string)
+			log(VERBOSE, 'UNKNOWN REQUEST', string)
 	})
 }
 

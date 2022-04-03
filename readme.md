@@ -82,7 +82,8 @@ import {exposeThroughProxy} from 'lan-tunnel'
 // Include this in your app, or run separately
 exposeThroughProxy({
   // The internet proxy server at which the app will be exposed
-  tunnelHost: 'your-proxy-server.com',
+  proxyHost: 'your-proxy-server.com',
+  proxyPort: 80,
   tunnelPort: 8010,
   // Your app
   appPort: 8080
