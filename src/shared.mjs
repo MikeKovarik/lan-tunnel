@@ -1,6 +1,7 @@
 export const NOTHING = 0
 export const INFO    = 1
 export const VERBOSE = 2
+export const DEBUG   = 3
 
 export let logLevel = INFO
 
@@ -47,6 +48,13 @@ export function applyOptions(target, defaultOpts = {}, userOpts = {}) {
 
 export function setupLongLivedSocket(socket) {
 	socket.setTimeout(0)
-	socket.setNoDelay(true)
-	socket.setKeepAlive(true, 0)
+	socket.setKeepAlive(true, 10000)
 }
+
+export const ID = Symbol('id')
+export const TYPE = Symbol('type')
+
+const createId = () => Math.ceil(Math.random() * 999).toString().padStart(3, '0')
+export const getId = socket => socket[ID] ? socket[ID] : socket[ID] = createId()
+export const getDebugId = socket => `${(socket[TYPE] || '').slice(0,1)}:${getId(socket)}`
+export const logSocket = (socket, ...args) => log(DEBUG, getDebugId(socket),  ...args)

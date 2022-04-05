@@ -48,7 +48,10 @@ class Tunnel extends EventEmitter {
 			if (this.secret) {
 				verifySenderTunnel(this.remote, this)
 					.then(this.acceptTunnel)
-					.catch(this.close)
+					.catch(err => {
+						console.error(err)
+						this.close()
+					})
 			} else {
 				this.acceptTunnel()
 			}
@@ -148,7 +151,7 @@ class ProxyClient {
 		applyOptions(this, defaultOptions, options)
 		if (!this.appHost)    throw new Error(`appHost is undefined`)
 		if (!this.appPort)    throw new Error(`appPort is undefined`)
-		if (!this.proxyHost) throw new Error(`proxyHost is undefined`)
+		if (!this.proxyHost)  throw new Error(`proxyHost is undefined`)
 		if (!this.tunnelPort) throw new Error(`tunnelPort is undefined`)
 	}
 
@@ -199,10 +202,12 @@ class ProxyClient {
 	}
 
 	fillTunnels = () => {
-		if (this.openTunnels.length < this.tunnelSocketsPoolSize) {
-			log(VERBOSE, `Filling empty spots after closing tunnels. ${this.openTunnels.length} / ${this.tunnelSocketsPoolSize}`)
-			while (this.openTunnels.length < this.tunnelSocketsPoolSize)
+		const {openTunnels, tunnelSocketsPoolSize} = this
+		if (openTunnels.length < tunnelSocketsPoolSize) {
+			log(VERBOSE, `${openTunnels.length.toString().padStart(2, '0')} / ${tunnelSocketsPoolSize} - Filling empty spots after closing tunnels.`)
+			while (openTunnels.length < tunnelSocketsPoolSize)
 				this.createTunnel()
+			log(VERBOSE, `${openTunnels.length.toString().padStart(2, '0')} / ${tunnelSocketsPoolSize} - Tunnels filled.`)
 		}
 	}
 

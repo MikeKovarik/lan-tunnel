@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import {log, logLevel, INFO, VERBOSE, setLogLevel} from './shared.mjs'
+import {log, logSocket, logLevel, INFO, VERBOSE, setLogLevel} from './shared.mjs'
 
 
 export function createCipher({cipher, key, iv}) {
@@ -34,6 +34,7 @@ export function verifyReceiverTunnel(socket, {secret, challengeTimeout}) {
 				log(INFO, `Tunnel rejected: incorrect secret`)
 				socket.write(Buffer.from([CHALLENGE.INCORRECT]), reject)
 			} else {
+				logSocket(socket, `Tunnel verified`)
 				socket.write(Buffer.from([CHALLENGE.VERIFIED]), resolve)
 			}
 		}

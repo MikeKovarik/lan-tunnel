@@ -1,6 +1,6 @@
 import net from 'net'
 import tls from 'tls'
-import {log, logLevel, INFO, VERBOSE, setLogLevel, removeFromArray, applyOptions, setupLongLivedSocket} from './shared.mjs'
+import {log, logLevel, INFO, VERBOSE, DEBUG, setLogLevel, removeFromArray, applyOptions, setupLongLivedSocket, logSocket, TYPE, getDebugId} from './shared.mjs'
 import {verifyReceiverTunnel, createCipher, canEncryptTunnel} from './encryption.mjs'
 import defaultOptions from './options.mjs'
 
@@ -68,6 +68,9 @@ class ProxyServer {
 	}
 
 	onProxyRequest = request => {
+		request[TYPE] = 'request'
+		logSocket(request, `incomming request`)
+
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
 		const close = () => this.onRequestClosed(request)
@@ -75,6 +78,9 @@ class ProxyServer {
 		request.once('end', close)
 		request.once('timeout', close)
 		request.once('close', close)
+
+		// logging after all corresponding hnadlers to have updated queue number in the logs.
+		logSocketAll(request, this)
 
 		if (this.tunnelPool.length)
 			this.pipeSockets(request, this.tunnelPool.shift())
@@ -91,6 +97,9 @@ class ProxyServer {
 	}
 
 	onTunnelOpened = tunnel => {
+		tunnel[TYPE] = 'tunnel'
+		logSocket(tunnel, `tunnel opened`)
+
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
 		const close = () => this.onTunnelClosed(tunnel)
@@ -99,23 +108,35 @@ class ProxyServer {
 		tunnel.once('timeout', close)
 		tunnel.once('close', close)
 
+		// logging after all corresponding hnadlers to have updated queue number in the logs.
+		logSocketAll(tunnel, this)
+
 		if (this.secret) {
 			verifyReceiverTunnel(tunnel, this)
 				.then(() => this.acceptTunnel(tunnel))
-				.catch(() => tunnel.end())
+				.catch(err => {
+					console.error(err)
+					tunnel.end()
+				})
 		} else {
 			this.acceptTunnel(tunnel)
 		}
 	}
 
 	acceptTunnel(tunnel) {
+		logSocket(tunnel, 'accepted | tunnelPool:', this.tunnelPool.length + 1, 'requestQueue:', this.requestQueue.length)
+
 		setupLongLivedSocket(tunnel)
 		if (this.tunnelPool.length === 0)
 			log(INFO, `App connected (first tunnel connected)`)
-		if (this.requestQueue.length)
+
+		if (this.requestQueue.length) {
+			logSocket(tunnel, 'serving req queue')
 			this.pipeSockets(this.requestQueue.shift(), tunnel)
-		else
+		} else {
+			logSocket(tunnel, 'added to pool')
 			this.tunnelPool.push(tunnel)
+		}
 	}
 
 	onTunnelClosed(tunnel) {
@@ -127,8 +148,9 @@ class ProxyServer {
 	}
 
 	pipeSockets(request, tunnel) {
-		if (logLevel === VERBOSE)
-			logIncomingSocket(request)
+		request.once('end', () => tunnel.end())
+		tunnel.once('end', () => request.end())
+
 		if (this.encryptTunnel) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
@@ -147,18 +169,43 @@ class ProxyServer {
 
 }
 
-const logIncomingSocket = socket => {
-	socket.once('data', buffer => {
-		let string = buffer.slice(0, 100).toString()
-		let firstLine = string.slice(0, string.indexOf('\n'))
-		let httpIndex = firstLine.indexOf(' HTTP/')
-		if (httpIndex !== -1)
-			log(VERBOSE, firstLine.slice(0, httpIndex))
-		else
-			log(VERBOSE, 'UNKNOWN REQUEST', string)
-	})
+const logSocketAll = (socket, {tunnelPool, requestQueue}) => {
+	if (logLevel >= DEBUG) {
+		socket.once('error',  err => logSocket(socket, '#error:', err))
+		socket.once('end',     () => logSocket(socket, '#end'))
+		socket.once('timeout', () => logSocket(socket, '#timeout'))
+		socket.once('close',   () => logSocket(socket, '#close'))
+		socket.on('data', buffer => {
+			let firstLine = buffer.slice(0, 50).toString().split('\n')[0]
+			logSocket(socket, '#data:', firstLine)
+		})
+	} else if (logLevel >= VERBOSE) {
+		const socketId = getDebugId(socket)
+		const getSocketInfo = () => `${socketId} (${tunnelPool.length.toString()} ${requestQueue.length.toString()})`
+		Promise.race([
+			promiseEvent(socket, 'error'),
+			promiseEvent(socket, 'end'),
+			promiseEvent(socket, 'timeout'),
+			promiseEvent(socket, 'close'),
+		]).then(() => {
+			log(VERBOSE, getSocketInfo(), 'closing', socket[TYPE])
+		})
+		if (socket[TYPE] === 'request') {
+			socket.once('data', buffer => {
+				let string = buffer.slice(0, 200).toString()
+				let firstLine = string.slice(0, string.indexOf('\n'))
+				let httpIndex = firstLine.indexOf(' HTTP/')
+				if (httpIndex !== -1)
+					log(VERBOSE, getSocketInfo(), firstLine.slice(0, Math.min(60, httpIndex)))
+				else
+					log(VERBOSE, getSocketInfo(), 'UNKNOWN REQUEST', string)
+			})
+		}
+	}
 }
 
 export function createProxyServer(options) {
 	new ProxyServer(options)
 }
+
+const promiseEvent = (target, event) => new Promise(resolve => target.once(event, resolve))
