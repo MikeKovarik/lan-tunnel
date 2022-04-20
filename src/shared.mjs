@@ -51,6 +51,23 @@ export function setupLongLivedSocket(socket) {
 	socket.setKeepAlive(true, 10000)
 }
 
+export const DESTRUCTION_TIMEOUT = Symbol('id')
+
+export function killSocket(socket) {
+	if (socket.closed) return
+	socket.end()
+	if (socket.destroyed) return
+	if (socket[DESTRUCTION_TIMEOUT]) return
+	socket[DESTRUCTION_TIMEOUT] = setTimeout(() => socket.destroy(), 500)
+}
+
+export function mutuallyAssuredSocketDestruction(a, b) {
+	a.once('end',   () => killSocket(b))
+	a.once('close', () => killSocket(b))
+	b.once('end',   () => killSocket(a))
+	b.once('close', () => killSocket(a))
+}
+
 export const ID = Symbol('id')
 export const TYPE = Symbol('type')
 

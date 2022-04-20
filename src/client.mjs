@@ -1,25 +1,24 @@
 import net from 'net'
 import {EventEmitter} from 'events'
-import {log, logLevel, setLogLevel, INFO, VERBOSE, removeFromArray, applyOptions, setupLongLivedSocket} from './shared.mjs'
+import {log, logLevel, setLogLevel, INFO, VERBOSE, removeFromArray, applyOptions, setupLongLivedSocket, killSocket, mutuallyAssuredSocketDestruction} from './shared.mjs'
 import {verifySenderTunnel, createCipher, canEncryptTunnel} from './encryption.mjs'
 import defaultOptions from './options.mjs'
 
 
 class Tunnel extends EventEmitter {
 
-	remoteConnecting = true
-	localConnecting = true
-	remoteConnected = false
-	localConnected = false
 	verified = false
 
 	get connecting() {
-		return this.remoteConnecting && this.localConnecting
+		return this.remote.readyState === 'opening'
+			|| this.local.readyState === 'opening'
 	}
 
 	get connected() {
-		return this.remoteConnected
-			&& this.localConnected
+		return this.remote.readyState === 'open'
+			&& this.local.readyState === 'open'
+			&& !this.remote.writableEnded
+			&& !this.local.writableEnded
 			&& this.verified
 	}
 
@@ -43,30 +42,27 @@ class Tunnel extends EventEmitter {
 		})
 
 		remote.once('connect', () => {
-			this.remoteConnecting = false
-			this.remoteConnected = true
-			if (this.secret) {
-				verifySenderTunnel(this.remote, this)
-					.then(this.acceptTunnel)
-					.catch(err => {
-						console.error(err)
-						this.close()
-					})
-			} else {
-				this.acceptTunnel()
+			try {
+				if (this.secret)
+					await verifySenderTunnel(this.remote, this)
+				await this.acceptTunnel()
+			} catch(err) {
+				console.error(`Couldn't open tunnel:`, err)
+				this.close()
 			}
 		})
 
-		local.once('connect', () => {
-			this.localConnecting = false
-			this.localConnected = true
-			this.tryEmitConnect()
-		})
+		local.once('connect', this.tryEmitConnect)
 
-		remote.once('error', this.close)
-		remote.once('end',   this.close)
-		local.once('error',  this.close)
-		local.once('end',    this.close)
+		remote.once('error',   this.close)
+		remote.once('end',     this.close)
+		remote.once('timeout', this.close)
+		remote.once('close',   this.close)
+
+		local.once('error',   this.close)
+		local.once('end',     this.close)
+		local.once('timeout', this.close)
+		local.once('close',   this.close)
 
 		// connect the two sockets once both are connected (and remote is verified with secret).
 		this.on('connect', this.pipeSockets)
@@ -86,20 +82,21 @@ class Tunnel extends EventEmitter {
 	getPromise() {
 		return new Promise((resolve, reject) => {
 			this.once('connect', resolve)
-			this.once('end', reject)
+			this.once('close', reject)
 		})
 	}
 
 	close = () => {
-		this.local.end()
-		this.remote.end()
-		this.remoteConnected = false
-		this.localConnected = false
-		this.emit('end')
+		killSocket(this.remote)
+		killSocket(this.local)
+		this.emit('close')
 	}
 
 	pipeSockets = () => {
 		let {local, remote} = this
+
+		mutuallyAssuredSocketDestruction(local, remote)
+
 		if (canEncryptTunnel(this.tunnelEncryption)) {
 			// Encrypted tunnel
 			const {cipher, decipher} = createCipher(this.tunnelEncryption)
@@ -183,12 +180,12 @@ class ProxyClient {
 	}
 
 	fillTunnelsTimeout = undefined
-	onTunnelEnd() {
+	onTunnelClose() {
 		if (this.fillTunnelsTimeout === undefined)
-			this.fillTunnelsTimeout = setTimeout(this.onTunnelEndDebounced, 300)
+			this.fillTunnelsTimeout = setTimeout(this.onTunnelCloseDebounced, 300)
 	}
 
-	onTunnelEndDebounced = () => {
+	onTunnelCloseDebounced = () => {
 		this.fillTunnelsTimeout = undefined
 		if (this.openTunnels.length === 0) {
 			// This was the last/only tunnel. We're likely in the boot phase where one failed
@@ -214,10 +211,10 @@ class ProxyClient {
 	createTunnel() {
 		let tunnel = new Tunnel(this)
 		this.openTunnels.push(tunnel)
-		tunnel.once('end', () => {
+		tunnel.once('close', () => {
 			// Cleanup once the tunnel closes
 			removeFromArray(this.openTunnels, tunnel)
-			this.onTunnelEnd()
+			this.onTunnelClose()
 		})
 		return tunnel
 	}

@@ -29,10 +29,10 @@ export function verifyReceiverTunnel(socket, {secret, challengeTimeout}) {
 			// may be undefined
 			if (!challenge) {
 				log(INFO, `Tunnel rejected: no secret`)
-				socket.write(Buffer.from([CHALLENGE.EMPTY]), reject)
+				socket.write(Buffer.from([CHALLENGE.EMPTY]), () => reject('no secret'))
 			} else if (challenge.toString() !== secret) {
 				log(INFO, `Tunnel rejected: incorrect secret`)
-				socket.write(Buffer.from([CHALLENGE.INCORRECT]), reject)
+				socket.write(Buffer.from([CHALLENGE.INCORRECT]), () => reject('incorrect secret'))
 			} else {
 				logSocket(socket, `Tunnel verified`)
 				socket.write(Buffer.from([CHALLENGE.VERIFIED]), resolve)
@@ -42,7 +42,7 @@ export function verifyReceiverTunnel(socket, {secret, challengeTimeout}) {
 			socket.removeListener('readable', onReadable)
 			socket.removeListener('timeout', onTimeout)
 			log(INFO, 'challenge timed out, closing tunnel')
-			reject()
+			reject('timed out')
 		}
 		socket.once('readable', onReadable)
 		socket.once('timeout', onTimeout)

@@ -1,6 +1,6 @@
 import net from 'net'
 import tls from 'tls'
-import {log, logLevel, INFO, VERBOSE, DEBUG, setLogLevel, removeFromArray, applyOptions, setupLongLivedSocket, logSocket, TYPE, getDebugId} from './shared.mjs'
+import {log, logLevel, INFO, VERBOSE, DEBUG, setLogLevel, removeFromArray, applyOptions, setupLongLivedSocket, killSocket, mutuallyAssuredSocketDestruction, logSocket, TYPE, getDebugId} from './shared.mjs'
 import {verifyReceiverTunnel, createCipher, canEncryptTunnel} from './encryption.mjs'
 import defaultOptions from './options.mjs'
 
@@ -73,11 +73,10 @@ class ProxyServer {
 
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
-		const close = () => this.onRequestClosed(request)
-		request.once('error', close)
-		request.once('end', close)
-		request.once('timeout', close)
-		request.once('close', close)
+		request.once('error',   this.onRequestClosed)
+		request.once('end',     this.onRequestClosed)
+		request.once('timeout', this.onRequestClosed)
+		request.once('close',   this.onRequestClosed)
 
 		// logging after all corresponding hnadlers to have updated queue number in the logs.
 		logSocketAll(request, this)
@@ -91,35 +90,27 @@ class ProxyServer {
 			request.setTimeout(this.requestTimeout)
 	}
 
-	onRequestClosed(request) {
-		removeFromArray(this.requestQueue, request)
-		request.end()
-	}
-
 	onTunnelOpened = tunnel => {
 		tunnel[TYPE] = 'tunnel'
 		logSocket(tunnel, `tunnel opened`)
 
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
-		const close = () => this.onTunnelClosed(tunnel)
-		tunnel.once('error', close)
-		tunnel.once('end', close)
-		tunnel.once('timeout', close)
-		tunnel.once('close', close)
+		tunnel.once('error',   this.onTunnelClosed)
+		tunnel.once('end',     this.onTunnelClosed)
+		tunnel.once('timeout', this.onTunnelClosed)
+		tunnel.once('close',   this.onTunnelClosed)
 
 		// logging after all corresponding hnadlers to have updated queue number in the logs.
 		logSocketAll(tunnel, this)
 
-		if (this.secret) {
-			verifyReceiverTunnel(tunnel, this)
-				.then(() => this.acceptTunnel(tunnel))
-				.catch(err => {
-					console.error(err)
-					tunnel.end()
-				})
-		} else {
-			this.acceptTunnel(tunnel)
+		try {
+			if (this.secret)
+				await verifyReceiverTunnel(tunnel, this)
+			await this.acceptTunnel(tunnel)
+		} catch(err) {
+			console.error(`Couldn't open tunnel:`, err)
+			tunnel.end()
 		}
 	}
 
@@ -139,17 +130,21 @@ class ProxyServer {
 		}
 	}
 
-	onTunnelClosed(tunnel) {
+	onRequestClosed = request => {
+		killSocket(request)
+		removeFromArray(this.requestQueue, request)
+	}
+
+	onTunnelClosed = tunnel => {
+		killSocket(tunnel)
 		const prevLength = this.tunnelPool.length // prevents spamming the "all tunnels ..." message
 		removeFromArray(this.tunnelPool, tunnel)
-		tunnel.end()
 		if (this.tunnelPool.length === 0 && prevLength > 0)
 			log(INFO, `App diconnected (all tunnels are closed, tunnel server remains listening)`)
 	}
 
 	pipeSockets(request, tunnel) {
-		request.once('end', () => tunnel.end())
-		tunnel.once('end', () => request.end())
+		mutuallyAssuredSocketDestruction(request, tunnel)
 
 		if (this.encryptTunnel) {
 			// Encrypted tunnel
