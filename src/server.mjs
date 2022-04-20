@@ -73,10 +73,11 @@ class ProxyServer {
 
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
-		request.once('error',   this.onRequestClosed)
-		request.once('end',     this.onRequestClosed)
-		request.once('timeout', this.onRequestClosed)
-		request.once('close',   this.onRequestClosed)
+		const close = () => this.onRequestClosed(request)
+		request.once('error',   close)
+		request.once('end',     close)
+		request.once('timeout', close)
+		request.once('close',   close)
 
 		// logging after all corresponding hnadlers to have updated queue number in the logs.
 		logSocketAll(request, this)
@@ -90,16 +91,17 @@ class ProxyServer {
 			request.setTimeout(this.requestTimeout)
 	}
 
-	onTunnelOpened = tunnel => {
+	onTunnelOpened = async tunnel => {
 		tunnel[TYPE] = 'tunnel'
 		logSocket(tunnel, `tunnel opened`)
 
 		// If 'error' event is unhandled, the app crashes. But we don't need to do anything about it since
 		// we're already listening to 'close' event which is fired afterwards.
-		tunnel.once('error',   this.onTunnelClosed)
-		tunnel.once('end',     this.onTunnelClosed)
-		tunnel.once('timeout', this.onTunnelClosed)
-		tunnel.once('close',   this.onTunnelClosed)
+		const close = () => this.onTunnelClosed(tunnel)
+		tunnel.once('error',   close)
+		tunnel.once('end',     close)
+		tunnel.once('timeout', close)
+		tunnel.once('close',   close)
 
 		// logging after all corresponding hnadlers to have updated queue number in the logs.
 		logSocketAll(tunnel, this)
@@ -130,12 +132,12 @@ class ProxyServer {
 		}
 	}
 
-	onRequestClosed = request => {
+	onRequestClosed(request) {
 		killSocket(request)
 		removeFromArray(this.requestQueue, request)
 	}
 
-	onTunnelClosed = tunnel => {
+	onTunnelClosed(tunnel) {
 		killSocket(tunnel)
 		const prevLength = this.tunnelPool.length // prevents spamming the "all tunnels ..." message
 		removeFromArray(this.tunnelPool, tunnel)

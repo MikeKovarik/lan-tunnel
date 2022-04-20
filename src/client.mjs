@@ -41,7 +41,7 @@ class Tunnel extends EventEmitter {
 			port: appPort
 		})
 
-		remote.once('connect', () => {
+		remote.once('connect', async () => {
 			try {
 				if (this.secret)
 					await verifySenderTunnel(this.remote, this)
